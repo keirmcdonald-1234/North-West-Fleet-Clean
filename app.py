@@ -1,4 +1,4 @@
-iimport streamlit as st
+import streamlit as st
 import boto3
 from PIL import Image
 import re

@@ -1,3 +1,4 @@
+
 import streamlit as st
 import boto3
 from PIL import Image
@@ -15,6 +16,9 @@ st.markdown("Upload car images, group them with headers, and export all results 
 
 if 'all_groups' not in st.session_state:
     st.session_state.all_groups = []
+
+if 'clear_uploader' not in st.session_state:
+    st.session_state.clear_uploader = False
 
 @st.cache_resource
 def get_rekognition_client():
@@ -186,7 +190,8 @@ uploaded_files = st.file_uploader(
     "Upload car images for this group",
     type=['png', 'jpg', 'jpeg'],
     accept_multiple_files=True,
-    help="Upload one or more images containing cars with visible license plates"
+    help="Upload one or more images containing cars with visible license plates",
+    key=f"uploader_{st.session_state.clear_uploader}"
 )
 
 if uploaded_files and group_header:
@@ -227,6 +232,7 @@ if uploaded_files and group_header:
             })
             
             st.success(f"Added '{group_header}' with {len(unique_plates)} license plate(s) from {processed_count} images")
+            st.session_state.clear_uploader = not st.session_state.clear_uploader
             st.rerun()
 
 elif uploaded_files and not group_header:

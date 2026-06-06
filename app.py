@@ -1,4 +1,3 @@
-
 import streamlit as st
 import boto3
 from PIL import Image
@@ -60,9 +59,14 @@ def compress_image(image_bytes: bytes) -> bytes:
     try:
         img = Image.open(io.BytesIO(image_bytes))
         
-        # Resize to max 1920px on longest side (keeps license plates readable)
-        max_size = 1920
-        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        # Convert RGBA to RGB if needed
+        if img.mode in ('RGBA', 'LA', 'P'):
+            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = rgb_img
+        
+        # Resize to max 1920px on longest side
+        img.thumbnail((1920, 1920), Image.LANCZOS)
         
         # Save with reduced quality
         output = io.BytesIO()
@@ -70,7 +74,34 @@ def compress_image(image_bytes: bytes) -> bytes:
         output.seek(0)
         return output.getvalue()
     except Exception as e:
+        st.warning(f"Could not compress image, using original")
         return image_bytes
+
+def detect_plates_in_image(image_bytes: bytes) -> List[str]:
+    try:
+        client = get_rekognition_client()
+        response = client.detect_text(Image={'Bytes': image_bytes})
+        
+        license_plates = []
+        
+        for detection in response['TextDetections']:
+            if detection['Type'] == 'LINE':
+                text = detection['DetectedText']
+                confidence = detection['Confidence']
+                
+                if confidence > 50:
+                    cleaned_text = clean_license_plate_text(text)
+                    if cleaned_text and cleaned_text not in license_plates:
+                        license_plates.append(cleaned_text)
+        
+        return license_plates
+        
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'AccessDeniedException':
+            st.error("AWS credentials are invalid or lack Rekognition permissions.")
+        else:
+            st.error(f"AWS Error: {e}")
+        return []
     try:
         client = get_rekognition_client()
         response = client.detect_text(Image={'Bytes': image_bytes})

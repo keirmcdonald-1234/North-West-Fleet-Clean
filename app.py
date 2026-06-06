@@ -1,3 +1,4 @@
+
 import streamlit as st
 import boto3
 from PIL import Image
@@ -37,8 +38,20 @@ def clean_license_plate_text(text: str) -> str:
     cleaned = re.sub(r'[^A-Z0-9]', '', cleaned)
     
     if len(cleaned) == 7:
-        if cleaned[0:2].isalpha() and cleaned[2:4].isdigit() and cleaned[4:7].isalpha():
-            return cleaned
+        # UK format: 2 letters + 2 digits + 3 letters
+        # Correct common OCR mistakes
+        first_two = cleaned[0:2]
+        middle_two = cleaned[2:4]
+        last_three = cleaned[4:7]
+        
+        # Fix 0/O and 5/S confusion in letter positions
+        first_two = first_two.replace('0', 'O').replace('5', 'S')
+        last_three = last_three.replace('0', 'O').replace('5', 'S')
+        
+        corrected = first_two + middle_two + last_three
+        
+        if corrected[0:2].isalpha() and corrected[2:4].isdigit() and corrected[4:7].isalpha():
+            return corrected
     
     return ""
 

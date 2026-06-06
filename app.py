@@ -1,13 +1,13 @@
-import streamlit as st
-import cv2
-import numpy as np
-import pytesseract
+iimport streamlit as st
+import boto3
 from PIL import Image
 import re
 from typing import List
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
+import base64
+from botocore.exceptions import NoCredentialsError, ClientError
 
 # Configure page
 st.set_page_config(
@@ -24,83 +24,66 @@ st.markdown("Upload car images, group them with headers, and export all results 
 if 'all_groups' not in st.session_state:
     st.session_state.all_groups = []
 
-def preprocess_image_for_plates(image: np.ndarray) -> np.ndarray:
-    """Preprocess image to enhance license plate detection"""
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    filtered = cv2.bilateralFilter(gray, 11, 17, 17)
-    edges = cv2.Canny(filtered, 30, 200)
-    return edges, gray
-
-def find_license_plate_contours(edges: np.ndarray) -> List:
-    """Find potential license plate contours"""
-    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:30]
-    
-    license_plate_contours = []
-    
-    for contour in contours:
-        epsilon = 0.018 * cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, epsilon, True)
-        
-        if len(approx) == 4:
-            x, y, w, h = cv2.boundingRect(approx)
-            aspect_ratio = w / h
-            area = cv2.contourArea(contour)
-            
-            if 2.0 <= aspect_ratio <= 5.0 and area > 1000:
-                license_plate_contours.append(approx)
-    
-    return license_plate_contours
-
-def extract_text_from_region(image: np.ndarray, contour) -> str:
-    """Extract text from a specific region of the image"""
-    x, y, w, h = cv2.boundingRect(contour)
-    roi = image[y:y+h, x:x+w]
-    roi = cv2.resize(roi, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-    _, roi = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    kernel = np.ones((1, 1), np.uint8)
-    roi = cv2.morphologyEx(roi, cv2.MORPH_CLOSE, kernel)
-    roi = cv2.morphologyEx(roi, cv2.MORPH_OPEN, kernel)
-    
-    custom_config = r'--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    text = pytesseract.image_to_string(roi, config=custom_config)
-    
-    return text.strip()
+# Initialize Rekognition client
+@st.cache_resource
+def get_rekognition_client():
+    """Initialize AWS Rekognition client with credentials from Streamlit secrets"""
+    try:
+        return boto3.client(
+            'rekognition',
+            region_name='us-east-1',
+            aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
+        )
+    except KeyError:
+        st.error("❌ AWS credentials not configured. See sidebar for setup instructions.")
+        st.stop()
+    except NoCredentialsError:
+        st.error("❌ AWS credentials are invalid or missing.")
+        st.stop()
 
 def clean_license_plate_text(text: str) -> str:
     """Clean and validate extracted license plate text"""
     cleaned = re.sub(r'\s+', '', text.upper())
     cleaned = re.sub(r'[^A-Z0-9]', '', cleaned)
     
+    # License plates are typically 3-8 characters long
     if 3 <= len(cleaned) <= 8:
         return cleaned
     
     return ""
 
-def process_single_image(image: np.ndarray) -> List[str]:
-    """Process a single image and return found license plates"""
-    license_plates = []
-    
-    edges, gray = preprocess_image_for_plates(image)
-    plate_contours = find_license_plate_contours(edges)
-    
-    for contour in plate_contours:
-        text = extract_text_from_region(gray, contour)
-        cleaned_text = clean_license_plate_text(text)
+def detect_plates_in_image(image_bytes: bytes) -> List[str]:
+    """Use AWS Rekognition to detect license plates in image"""
+    try:
+        client = get_rekognition_client()
         
-        if cleaned_text and cleaned_text not in license_plates:
-            license_plates.append(cleaned_text)
-    
-    if not license_plates:
-        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-        full_text = pytesseract.image_to_string(gray, config=custom_config)
-        words = full_text.split()
-        for word in words:
-            cleaned_word = clean_license_plate_text(word)
-            if cleaned_word and cleaned_word not in license_plates:
-                license_plates.append(cleaned_word)
-    
-    return license_plates
+        # Call Rekognition to detect text
+        response = client.detect_text(Image={'Bytes': image_bytes})
+        
+        license_plates = []
+        
+        # Process detections
+        for detection in response['TextDetections']:
+            # Only process lines (not individual words for better accuracy)
+            if detection['Type'] == 'LINE':
+                text = detection['DetectedText']
+                confidence = detection['Confidence']
+                
+                # Only consider detections with good confidence
+                if confidence > 50:
+                    cleaned_text = clean_license_plate_text(text)
+                    if cleaned_text and cleaned_text not in license_plates:
+                        license_plates.append(cleaned_text)
+        
+        return license_plates
+        
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'AccessDeniedException':
+            st.error("❌ AWS credentials are invalid or lack Rekognition permissions.")
+        else:
+            st.error(f"❌ AWS Error: {e}")
+        return []
 
 def create_excel_file(all_groups: list, filename: str) -> bytes:
     """Create an Excel spreadsheet with all grouped results in side-by-side columns"""
@@ -177,10 +160,6 @@ def main():
             help="This will appear as the header for this group in the Excel file"
         )
     
-    with col2:
-        st.write("")  # Spacing
-        st.write("")
-    
     uploaded_files = st.file_uploader(
         "Upload car images for this group",
         type=['png', 'jpg', 'jpeg'],
@@ -191,33 +170,53 @@ def main():
     # Process and add group
     if uploaded_files and group_header:
         if st.button("✅ Process & Add to List", use_container_width=True):
-            with st.spinner("Processing images..."):
+            with st.spinner("Processing images with AWS Rekognition..."):
                 all_plates = []
+                processed_count = 0
+                error_count = 0
+                
+                # Create progress bar
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
                 # Process each image
-                for uploaded_file in uploaded_files:
-                    image = Image.open(uploaded_file)
-                    image_np = np.array(image)
+                for idx, uploaded_file in enumerate(uploaded_files):
+                    status_text.text(f"Processing image {idx + 1} of {len(uploaded_files)}...")
                     
-                    if len(image_np.shape) == 3:
-                        image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-                    else:
-                        image_cv = image_np
+                    try:
+                        # Read image file
+                        image_bytes = uploaded_file.read()
+                        
+                        # Detect plates using Rekognition
+                        plates = detect_plates_in_image(image_bytes)
+                        all_plates.extend(plates)
+                        processed_count += 1
+                        
+                    except Exception as e:
+                        st.warning(f"⚠️ Error processing {uploaded_file.name}: {str(e)}")
+                        error_count += 1
                     
-                    plates = process_single_image(image_cv)
-                    all_plates.extend(plates)
+                    # Update progress
+                    progress = (idx + 1) / len(uploaded_files)
+                    progress_bar.progress(progress)
                 
                 # Remove duplicates
                 unique_plates = list(dict.fromkeys(all_plates))
+                
+                # Clear progress indicators
+                progress_bar.empty()
+                status_text.empty()
                 
                 # Add to session state
                 st.session_state.all_groups.append({
                     'name': group_header,
                     'plates': unique_plates,
-                    'image_count': len(uploaded_files)
+                    'image_count': processed_count
                 })
                 
-                st.success(f"✅ Added '{group_header}' with {len(unique_plates)} license plate(s)")
+                st.success(f"✅ Added '{group_header}' with {len(unique_plates)} license plate(s) from {processed_count} images")
+                if error_count > 0:
+                    st.warning(f"⚠️ {error_count} image(s) failed to process")
     
     elif uploaded_files and not group_header:
         st.warning("⚠️ Please enter a group header/name before processing")
@@ -283,32 +282,45 @@ def main():
                 st.rerun()
 
 # Sidebar with information
-st.sidebar.title("ℹ️ How to Use")
+st.sidebar.title("ℹ️ Setup Instructions")
 st.sidebar.markdown("""
-1. **Enter Group Name**: Give this batch of photos a header (e.g., "Parking Lot A")
-2. **Upload Photos**: Select multiple car images
-3. **Process**: Click "Process & Add to List"
-4. **Repeat**: Add more groups as needed
-5. **Export**: Download all groups in one Excel file
+## AWS Configuration Required
 
-**Tips for Best Results:**
-- Use clear, high-resolution images
-- Ensure license plates are visible
-- Avoid blurry or heavily angled photos
-- Each group will have its own header in Excel
+This app uses **AWS Rekognition** for accurate license plate detection.
 
-**Example Workflow:**
-- Add "Monday - Lot A" photos → Process
-- Add "Monday - Lot B" photos → Process  
-- Add "Tuesday - Lot A" photos → Process
-- Download one Excel file with all three groups!
+### Step 1: Get AWS Credentials
+1. Go to [AWS Console](https://console.aws.amazon.com)
+2. Click your name (top right) → **Security Credentials**
+3. Create an **Access Key**
+4. Copy:
+   - Access Key ID
+   - Secret Access Key
+
+### Step 2: Add to Streamlit Cloud
+1. Go to your app on [share.streamlit.io](https://share.streamlit.io)
+2. Click **Settings** (top right)
+3. Go to **Secrets**
+4. Paste this:
+```
+AWS_ACCESS_KEY_ID = "your-access-key-id"
+AWS_SECRET_ACCESS_KEY = "your-secret-access-key"
+```
+
+### Step 3: Restart App
+Click "Rerun" on the app - it should now work!
+
+## Costs
+- **~$0.0015 per image** analyzed
+- 100 images = ~$0.15
+- Very cost-effective!
+
+## How to Use
+1. Enter group name
+2. Upload photos
+3. Click "Process & Add to List"
+4. Repeat for more groups
+5. Download Excel file
 """)
 
 if __name__ == "__main__":
-    try:
-        pytesseract.get_tesseract_version()
-    except:
-        st.error("Tesseract OCR is not installed. Please install it to use this app.")
-        st.stop()
-    
     main()

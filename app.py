@@ -47,8 +47,11 @@ def clean_license_plate_text(text: str) -> str:
     cleaned = re.sub(r'\s+', '', text.upper())
     cleaned = re.sub(r'[^A-Z0-9]', '', cleaned)
     
-    # UK number plate format: 2 letters + 2 numbers + 3 letters (e.g., PN71ERY)
-    uk_plate_pattern = r'^[A-Z]{2}[0-9]{2}[A-Z]{3}
+    if len(cleaned) == 7:
+        if cleaned[0:2].isalpha() and cleaned[2:4].isdigit() and cleaned[4:7].isalpha():
+            return cleaned
+    
+    return ""
 
 def detect_plates_in_image(image_bytes: bytes) -> List[str]:
     """Use AWS Rekognition to detect license plates in image"""

@@ -55,7 +55,22 @@ def clean_license_plate_text(text: str) -> str:
     
     return ""
 
-def detect_plates_in_image(image_bytes: bytes) -> List[str]:
+def compress_image(image_bytes: bytes) -> bytes:
+    """Compress image to reduce file size while maintaining OCR quality"""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Resize to max 1920px on longest side (keeps license plates readable)
+        max_size = 1920
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+        # Save with reduced quality
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=85, optimize=True)
+        output.seek(0)
+        return output.getvalue()
+    except Exception as e:
+        return image_bytes
     try:
         client = get_rekognition_client()
         response = client.detect_text(Image={'Bytes': image_bytes})
@@ -157,7 +172,9 @@ if uploaded_files and group_header:
                 
                 try:
                     image_bytes = uploaded_file.read()
-                    plates = detect_plates_in_image(image_bytes)
+                    # Compress image to reduce file size
+                    compressed_bytes = compress_image(image_bytes)
+                    plates = detect_plates_in_image(compressed_bytes)
                     all_plates.extend(plates)
                     processed_count += 1
                     
@@ -179,6 +196,7 @@ if uploaded_files and group_header:
             })
             
             st.success(f"Added '{group_header}' with {len(unique_plates)} license plate(s) from {processed_count} images")
+            st.rerun()
 
 elif uploaded_files and not group_header:
     st.warning("Please enter a group header/name before processing")

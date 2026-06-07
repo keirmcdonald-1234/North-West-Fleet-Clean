@@ -203,16 +203,13 @@ if submitted and uploaded_files and group_header:
                 break
         
         if existing_group:
-            # Find plates in this batch that already exist in the group
             existing_plate_set = set(existing_group['plates'])
             cross_batch_dupes = [p for p in unique_plates if p in existing_plate_set]
 
-            # Merge plates
             combined_plates = existing_group['plates'] + unique_plates
             new_unique_plates = list(dict.fromkeys(combined_plates))
             plates_added = len(new_unique_plates) - len(existing_group['plates'])
 
-            # All duplicates = within-batch dupes + cross-batch dupes
             all_dupes = list(dict.fromkeys(
                 existing_group.get('duplicate_plates', []) +
                 batch_duplicate_plates +
@@ -270,9 +267,27 @@ if st.session_state.failed_images:
         ]
         if manual_plates and st.session_state.all_groups:
             latest_group = st.session_state.all_groups[-1]
-            combined_plates = latest_group['plates'] + manual_plates
-            latest_group['plates'] = list(dict.fromkeys(combined_plates))
-            st.success(f"Added {len(manual_plates)} plates")
+            existing_plate_set = set(latest_group['plates'])
+
+            # Check which manual plates are duplicates of existing ones
+            manual_dupes = [p for p in manual_plates if p in existing_plate_set]
+            # Only add plates that aren't already in the group
+            new_manual_plates = [p for p in manual_plates if p not in existing_plate_set]
+
+            latest_group['plates'] = list(dict.fromkeys(latest_group['plates'] + new_manual_plates))
+
+            # Update duplicate list and count
+            if manual_dupes:
+                existing_dupes = latest_group.get('duplicate_plates', [])
+                updated_dupes = list(dict.fromkeys(existing_dupes + manual_dupes))
+                latest_group['duplicate_plates'] = updated_dupes
+                latest_group['duplicate_count'] = len(updated_dupes)
+
+            if new_manual_plates:
+                st.success(f"Added {len(new_manual_plates)} plates manually")
+            if manual_dupes:
+                st.warning(f"{len(manual_dupes)} manual plate(s) already existed and were not added: {', '.join(manual_dupes)}")
+
         st.session_state.failed_images = []
         st.rerun()
 

@@ -9,18 +9,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
 from botocore.exceptions import NoCredentialsError, ClientError
 
-st.set_page_config(
-    page_title="Number Plate Recognition", 
-    page_icon="🚗", 
-    layout="wide",
-    initial_sidebar_state="collapsed",
-    theme={
-        "primaryColor": "#FF8C00",
-        "backgroundColor": "#000000",
-        "secondaryBackgroundColor": "#1a1a1a",
-        "textColor": "#FFFFFF"
-    }
-)
+st.set_page_config(page_title="Number Plate Recognition", page_icon="🚗", layout="wide")
 
 try:
     st.image("nw_fleet_clean_header.png", use_column_width=True)

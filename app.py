@@ -156,7 +156,7 @@ with st.form("upload_form"):
         if total_size_mb >= 990:
             st.error("Maximum upload size reached!")
     
-    submitted = st.form_submit_button("Process & Add to List", use_container_width=True)
+    submitted = st.form_submit_button("✅ Process", use_container_width=True)
 
 if submitted and uploaded_files and group_header:
     with st.spinner("Processing..."):
@@ -263,9 +263,13 @@ if st.session_state.all_groups:
     for idx, group in enumerate(st.session_state.all_groups):
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.subheader(f"{group['name']}")
-            st.write(f"Uploaded: {group.get('total_uploaded', 0)} | Plates: {len(group['plates'])} | Duplicates: {group.get('duplicate_count', 0)} | No detect: {group.get('no_plate_count', 0)}")
+            st.subheader(f"📌 {group['name']}")
+            st.write(f"**Total images uploaded:** {group.get('total_uploaded', 0)}")
+            st.write(f"**Unique Number Plates Identified:** {len(group['plates'])}")
+            st.write(f"**Duplicates:** {group.get('duplicate_count', 0)}")
+            st.write(f"**No number plate detected:** {group.get('no_plate_count', 0)}")
         with col2:
+            st.write("")
             if st.button("Remove", key=f"remove_{idx}", use_container_width=True):
                 st.session_state.all_groups.pop(idx)
                 st.rerun()

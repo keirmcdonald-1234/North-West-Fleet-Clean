@@ -11,8 +11,8 @@ from botocore.exceptions import NoCredentialsError, ClientError
 
 st.set_page_config(page_title="License Plate Recognition", page_icon="🚗", layout="wide")
 
-st.title("🚗 License Plate Recognition App")
-st.markdown("Upload car images, group them with headers, and export all results to one Excel file!")
+st.title("🚗 Number Plate Recognition App")
+st.markdown("Upload car images, group them with site names, and export all results to one Excel file!")
 
 if 'all_groups' not in st.session_state:
     st.session_state.all_groups = []
@@ -69,12 +69,12 @@ def compress_image(image_bytes: bytes) -> bytes:
             rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
             img = rgb_img
         
-        # Resize to max 1920px on longest side
-        img.thumbnail((1920, 1920), Image.LANCZOS)
+        # Resize to max 1280px on longest side (more compression)
+        img.thumbnail((1280, 1280), Image.LANCZOS)
         
-        # Save with reduced quality
+        # Save with lower quality (still good for plate detection)
         output = io.BytesIO()
-        img.save(output, format='JPEG', quality=85, optimize=True)
+        img.save(output, format='JPEG', quality=75, optimize=True)
         output.seek(0)
         return output.getvalue()
     except Exception as e:
@@ -144,7 +144,25 @@ def create_excel_file(all_groups: list) -> bytes:
     ws['A1'] = "License Plate Recognition Results"
     ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
     
-    for group_idx, group in enumerate(all_groups):
+    # Split groups with more than 50 plates into multiple columns
+    display_groups = []
+    for group in all_groups:
+        plates = group['plates']
+        if len(plates) > 50:
+            # Split into chunks of 50
+            for chunk_idx in range(0, len(plates), 50):
+                chunk = plates[chunk_idx:chunk_idx + 50]
+                chunk_num = (chunk_idx // 50) + 1
+                display_name = f"{group['name']} ({chunk_num})" if chunk_num > 1 else group['name']
+                display_groups.append({
+                    'name': display_name,
+                    'plates': chunk
+                })
+        else:
+            display_groups.append(group)
+    
+    # Add groups to Excel
+    for group_idx, group in enumerate(display_groups):
         col = (group_idx * 2) + 1
         group_name = group['name']
         plates = group['plates']
@@ -164,7 +182,7 @@ def create_excel_file(all_groups: list) -> bytes:
             plate_cell.border = border
             plate_cell.alignment = Alignment(horizontal="left", vertical="center")
     
-    for col_idx in range(1, len(all_groups) * 2 + 1):
+    for col_idx in range(1, len(display_groups) * 2 + 1):
         if col_idx % 2 == 1:
             ws.column_dimensions[chr(64 + col_idx)].width = 30
         else:
@@ -181,9 +199,9 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     group_header = st.text_input(
-        "Group Header/Name:",
+        "Site Name:",
         placeholder="e.g., 'Parking Lot A', 'Monday Cars', 'Lot 1'",
-        help="This will appear as the header for this group in the Excel file"
+        help="This will appear as the header for this site in the Excel file"
     )
 
 uploaded_files = st.file_uploader(
@@ -193,6 +211,12 @@ uploaded_files = st.file_uploader(
     help="Upload one or more images containing cars with visible license plates",
     key=f"uploader_{st.session_state.clear_uploader}"
 )
+
+# Show warning if max upload size reached
+if uploaded_files:
+    total_size_mb = sum(file.size for file in uploaded_files) / (1024 * 1024)
+    if total_size_mb >= 1950:
+        st.error("❌ Maximum upload size reached! Remove some photos to add more.")
 
 if uploaded_files and group_header:
     if st.button("✅ Process & Add to List", use_container_width=True):
@@ -321,4 +345,4 @@ Click "Rerun" - it should work!
 3. Click "Process & Add to List"
 4. Repeat for more groups
 5. Download Excel file
-""") #
+""")

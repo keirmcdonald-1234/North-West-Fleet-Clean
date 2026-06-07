@@ -1,3 +1,4 @@
+
 import streamlit as st
 import boto3
 from PIL import Image
@@ -225,16 +226,24 @@ if uploaded_files and group_header:
             
             if existing_group:
                 combined_plates = existing_group['plates'] + unique_plates
-                existing_group['plates'] = list(dict.fromkeys(combined_plates))
+                new_unique_plates = list(dict.fromkeys(combined_plates))
+                duplicates_found = len(combined_plates) - len(new_unique_plates)
+                existing_group['plates'] = new_unique_plates
                 existing_group['image_count'] += processed_count
-                st.success(f"Appended {len(unique_plates)} plate(s) to '{group_header}' (total: {len(existing_group['plates'])} unique plates)")
+                existing_group['no_plate_count'] += len(no_plate_images)
+                existing_group['duplicate_count'] += duplicates_found
+                st.success(f"Appended {len(unique_plates)} plate(s) to '{group_header}'")
             else:
+                duplicates_in_batch = len(all_plates) - len(unique_plates)
                 st.session_state.all_groups.append({
                     'name': group_header,
                     'plates': unique_plates,
-                    'image_count': processed_count
+                    'image_count': processed_count,
+                    'no_plate_count': len(no_plate_images),
+                    'duplicate_count': duplicates_in_batch
                 })
-                st.success(f"Added '{group_header}' with {len(unique_plates)} license plate(s) from {processed_count} images")
+                st.success(f"Added '{group_header}' with {len(unique_plates)} unique number plate(s)")
+
             
             # Show warnings for images with no plates detected
             if no_plate_images:
@@ -263,10 +272,10 @@ if st.session_state.all_groups:
         
         with col1:
             st.subheader(f"📌 {group['name']}")
-            st.write(f"**Plates found:** {len(group['plates'])} | **Images processed:** {group['image_count']}")
-            
-            for plate in group['plates']:
-                st.code(plate, language=None)
+            st.write(f"**Total images processed:** {group['image_count']}")
+            st.write(f"**Unique Number Plates Identified:** {len(group['plates'])}")
+            st.write(f"**Duplicates:** {group.get('duplicate_count', 0)}")
+            st.write(f"**Images where no number plate found:** {group.get('no_plate_count', 0)}")
         
         with col2:
             st.write("")
@@ -286,8 +295,9 @@ if st.session_state.all_groups:
     
     total_groups = len(st.session_state.all_groups)
     total_plates = sum(len(group['plates']) for group in st.session_state.all_groups)
+    total_images = sum(group['image_count'] for group in st.session_state.all_groups)
     
-    st.info(f"Ready to export: **{total_groups}** site(s) with **{total_plates}** unique number plates total")
+    st.info(f"**Total images processed:** {total_images} | **Total unique number plates:** {total_plates}")
     
     excel_data = create_excel_file(st.session_state.all_groups)
     excel_filename = f"{filename}.xlsx" if filename else "number_plates.xlsx"

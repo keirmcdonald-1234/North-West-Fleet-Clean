@@ -45,10 +45,10 @@ def compress_image(image_bytes: bytes) -> bytes:
             rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
             img = rgb_img
         
-        img.thumbnail((1280, 1280), Image.LANCZOS)
+        img.thumbnail((1920, 1920), Image.LANCZOS)
         
         output = io.BytesIO()
-        img.save(output, format='JPEG', quality=75, optimize=True)
+        img.save(output, format='JPEG', quality=88, optimize=True)
         output.seek(0)
         return output.getvalue()
     except Exception as e:
@@ -160,30 +160,29 @@ def create_excel_file(all_groups: list) -> bytes:
 
 st.header("Add Photo Group")
 
-col1, col2 = st.columns([2, 1])
-
-with col1:
+with st.form("upload_form"):
     group_header = st.text_input(
         "Site Name:",
         placeholder="e.g., 'Parking Lot A', 'Monday Cars', 'Lot 1'",
         help="This will appear as the header for this site in the Excel file"
     )
+    
+    uploaded_files = st.file_uploader(
+        "Upload car images for this group",
+        type=['png', 'jpg', 'jpeg'],
+        accept_multiple_files=True,
+        help="Upload one or more images containing cars with visible license plates",
+        key=f"uploader_{st.session_state.clear_uploader}"
+    )
+    
+    if uploaded_files:
+        total_size_mb = sum(file.size for file in uploaded_files) / (1024 * 1024)
+        if total_size_mb >= 1950:
+            st.error("Maximum upload size reached! Remove some photos to add more.")
+    
+    submitted = st.form_submit_button("✅ Process & Add to List", use_container_width=True)
 
-uploaded_files = st.file_uploader(
-    "Upload car images for this group",
-    type=['png', 'jpg', 'jpeg'],
-    accept_multiple_files=True,
-    help="Upload one or more images containing cars with visible license plates",
-    key=f"uploader_{st.session_state.clear_uploader}"
-)
-
-if uploaded_files:
-    total_size_mb = sum(file.size for file in uploaded_files) / (1024 * 1024)
-    if total_size_mb >= 1950:
-        st.error("Maximum upload size reached! Remove some photos to add more.")
-
-if uploaded_files and group_header:
-    if st.button("✅ Process & Add to List", use_container_width=True):
+if submitted and uploaded_files and group_header:
         with st.spinner("Processing images with AWS Rekognition..."):
             all_plates = []
             processed_count = 0
@@ -229,7 +228,7 @@ if uploaded_files and group_header:
                 new_unique_plates = list(dict.fromkeys(combined_plates))
                 duplicates_found = len(combined_plates) - len(new_unique_plates)
                 existing_group['plates'] = new_unique_plates
-                existing_group['image_count'] += processed_count
+                existing_group['total_uploaded'] += len(uploaded_files)
                 existing_group['no_plate_count'] += len(no_plate_images)
                 existing_group['duplicate_count'] += duplicates_found
                 st.success(f"Appended {len(unique_plates)} plate(s) to '{group_header}'")
@@ -238,7 +237,7 @@ if uploaded_files and group_header:
                 st.session_state.all_groups.append({
                     'name': group_header,
                     'plates': unique_plates,
-                    'image_count': processed_count,
+                    'total_uploaded': len(uploaded_files),
                     'no_plate_count': len(no_plate_images),
                     'duplicate_count': duplicates_in_batch
                 })
@@ -260,7 +259,7 @@ if uploaded_files and group_header:
             st.session_state.clear_uploader = not st.session_state.clear_uploader
             st.rerun()
 
-elif uploaded_files and not group_header:
+elif submitted and not group_header:
     st.warning("Please enter a site name before processing")
 
 if st.session_state.all_groups:
@@ -272,10 +271,10 @@ if st.session_state.all_groups:
         
         with col1:
             st.subheader(f"📌 {group['name']}")
-            st.write(f"**Total images processed:** {group['image_count']}")
+            st.write(f"**Total images uploaded:** {group.get('total_uploaded', 0)}")
             st.write(f"**Unique Number Plates Identified:** {len(group['plates'])}")
             st.write(f"**Duplicates:** {group.get('duplicate_count', 0)}")
-            st.write(f"**Images where no number plate found:** {group.get('no_plate_count', 0)}")
+            st.write(f"**No number plate detected:** {group.get('no_plate_count', 0)}")
         
         with col2:
             st.write("")
@@ -295,9 +294,9 @@ if st.session_state.all_groups:
     
     total_groups = len(st.session_state.all_groups)
     total_plates = sum(len(group['plates']) for group in st.session_state.all_groups)
-    total_images = sum(group['image_count'] for group in st.session_state.all_groups)
+    total_images = sum(group.get('total_uploaded', 0) for group in st.session_state.all_groups)
     
-    st.info(f"**Total images processed:** {total_images} | **Total unique number plates:** {total_plates}")
+    st.info(f"**Total images uploaded:** {total_images} | **Total unique number plates:** {total_plates}")
     
     excel_data = create_excel_file(st.session_state.all_groups)
     excel_filename = f"{filename}.xlsx" if filename else "number_plates.xlsx"

@@ -198,15 +198,24 @@ if submitted and uploaded_files and group_header:
             existing_group['total_uploaded'] += len(uploaded_files)
             existing_group['no_plate_count'] += len(no_plate_images)
             existing_group['duplicate_count'] += duplicates_found
+            new_dupes = [p for p in unique_plates if p in set(existing_group['plates'])]
+            existing_group.setdefault('duplicate_plates', [])
+            existing_group['duplicate_plates'] = list(dict.fromkeys(existing_group['duplicate_plates'] + new_dupes))
             st.success(f"Appended {plates_added} new plates")
         else:
-            duplicates_in_batch = len(all_plates) - len(unique_plates)
+            seen = set()
+            duplicate_plates = []
+            for p in all_plates:
+                if p in seen and p not in duplicate_plates:
+                    duplicate_plates.append(p)
+                seen.add(p)
             st.session_state.all_groups.append({
                 'name': group_header,
                 'plates': unique_plates,
                 'total_uploaded': len(uploaded_files),
                 'no_plate_count': len(no_plate_images),
-                'duplicate_count': duplicates_in_batch
+                'duplicate_count': len(duplicate_plates),
+                'duplicate_plates': duplicate_plates
             })
             st.success(f"Added {len(unique_plates)} new plates")
         
@@ -261,6 +270,10 @@ if st.session_state.all_groups:
             st.write(f"**Total Images Uploaded:** {group.get('total_uploaded', 0)}")
             st.write(f"**Unique Number Plates Identified:** {len(group['plates'])}")
             st.write(f"**Duplicates:** {group.get('duplicate_count', 0)}")
+            if group.get('duplicate_plates'):
+                with st.expander("View duplicate plates"):
+                    for plate in group['duplicate_plates']:
+                        st.write(plate)
         with col2:
             st.write("")
             if st.button("Remove", key=f"remove_{idx}", use_container_width=True):

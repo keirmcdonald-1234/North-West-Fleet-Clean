@@ -1,4 +1,3 @@
-
 import streamlit as st
 import boto3
 from PIL import Image
@@ -19,6 +18,9 @@ if 'all_groups' not in st.session_state:
 
 if 'clear_uploader' not in st.session_state:
     st.session_state.clear_uploader = False
+
+if 'failed_images' not in st.session_state:
+    st.session_state.failed_images = []
 
 @st.cache_resource
 def get_rekognition_client():
@@ -188,6 +190,7 @@ if submitted and uploaded_files and group_header:
             processed_count = 0
             no_plate_images = []
             error_images = []
+            failed_images_data = []
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -205,6 +208,11 @@ if submitted and uploaded_files and group_header:
                         processed_count += 1
                     else:
                         no_plate_images.append(uploaded_file.name)
+                        failed_images_data.append({
+                            'name': uploaded_file.name,
+                            'image': Image.open(io.BytesIO(image_bytes)),
+                            'plate': ''
+                        })
                     
                 except Exception as e:
                     error_images.append(uploaded_file.name)
@@ -246,9 +254,8 @@ if submitted and uploaded_files and group_header:
             
             # Show warnings for images with no plates detected
             if no_plate_images:
-                st.warning(f"⚠️ No number plates detected in {len(no_plate_images)} image(s):")
-                for img in no_plate_images:
-                    st.write(f"  • {img}")
+                st.warning(f"⚠️ No number plates detected in {len(no_plate_images)} image(s)")
+                st.session_state.failed_images = failed_images_data
             
             # Show errors for images that failed to process
             if error_images:
@@ -261,6 +268,43 @@ if submitted and uploaded_files and group_header:
 
 elif submitted and not group_header:
     st.warning("Please enter a site name before processing")
+
+# Display failed images for manual entry
+if st.session_state.failed_images:
+    st.divider()
+    st.header("📸 Manual Number Plate Entry")
+    st.markdown("Images with no detected plates - enter the number plate manually:")
+    
+    for idx, failed_img in enumerate(st.session_state.failed_images):
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.image(failed_img['image'], use_column_width=True)
+        
+        with col2:
+            st.write(f"**{failed_img['name']}**")
+            plate = st.text_input(
+                "Enter number plate:",
+                key=f"manual_plate_{idx}",
+                placeholder="e.g., PO75XPR"
+            )
+            if plate:
+                st.session_state.failed_images[idx]['plate'] = plate.upper()
+    
+    # Button to confirm and add manual entries
+    if st.button("✅ Confirm Manual Entries", use_container_width=True):
+        manual_plates = [img['plate'] for img in st.session_state.failed_images if img['plate']]
+        
+        if manual_plates:
+            # Find the latest group and add manual plates
+            if st.session_state.all_groups:
+                latest_group = st.session_state.all_groups[-1]
+                combined_plates = latest_group['plates'] + manual_plates
+                latest_group['plates'] = list(dict.fromkeys(combined_plates))
+                st.success(f"Added {len(manual_plates)} manual plate(s) to '{latest_group['name']}'")
+        
+        st.session_state.failed_images = []
+        st.rerun()
 
 if st.session_state.all_groups:
     st.divider()

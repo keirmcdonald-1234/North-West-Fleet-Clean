@@ -7,18 +7,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
 from botocore.exceptions import NoCredentialsError, ClientError
- 
+
 st.set_page_config(page_title="Number Plate Recognition", page_icon="🚗", layout="wide")
- 
+
 st.title("🚗 Number Plate Recognition App")
- 
+
 if 'all_groups' not in st.session_state:
     st.session_state.all_groups = []
 if 'clear_uploader' not in st.session_state:
     st.session_state.clear_uploader = False
 if 'failed_images' not in st.session_state:
     st.session_state.failed_images = []
- 
+
 @st.cache_resource
 def get_rekognition_client():
     try:
@@ -34,7 +34,7 @@ def get_rekognition_client():
     except NoCredentialsError:
         st.error("AWS credentials invalid.")
         st.stop()
- 
+
 def compress_image(image_bytes: bytes) -> bytes:
     try:
         img = Image.open(io.BytesIO(image_bytes))
@@ -49,7 +49,7 @@ def compress_image(image_bytes: bytes) -> bytes:
         return output.getvalue()
     except Exception as e:
         return image_bytes
- 
+
 def clean_license_plate_text(text: str) -> str:
     cleaned = re.sub(r'\s+', '', text.upper())
     cleaned = re.sub(r'[^A-Z0-9]', '', cleaned)
@@ -69,7 +69,7 @@ def clean_license_plate_text(text: str) -> str:
             return corrected
     
     return ""
- 
+
 def detect_plates_in_image(image_bytes: bytes) -> List[str]:
     try:
         client = get_rekognition_client()
@@ -87,7 +87,7 @@ def detect_plates_in_image(image_bytes: bytes) -> List[str]:
     except ClientError as e:
         st.error(f"AWS Error: {e}")
         return []
- 
+
 def create_excel_file(all_groups: list) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -140,7 +140,7 @@ def create_excel_file(all_groups: list) -> bytes:
     wb.save(output)
     output.seek(0)
     return output.getvalue()
- 
+
 group_header = st.text_input("Site Name:")
 uploaded_files = st.file_uploader(
     "Upload images",
@@ -148,14 +148,14 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
     key=f"uploader_{st.session_state.clear_uploader}"
 )
- 
+
 if uploaded_files:
     total_size_mb = sum(file.size for file in uploaded_files) / (1024 * 1024)
     if total_size_mb >= 990:
         st.error("Maximum upload size reached!")
- 
+
 submitted = st.button("Process ✅", use_container_width=True)
- 
+
 if submitted and uploaded_files and group_header:
     with st.spinner("Processing..."):
         all_plates = []
@@ -218,10 +218,10 @@ if submitted and uploaded_files and group_header:
             st.error(f"Error in {len(error_images)} images")
         
         st.session_state.clear_uploader = not st.session_state.clear_uploader
- 
+
 elif submitted and not group_header:
     st.warning("Enter site name")
- 
+
 if st.session_state.failed_images:
     st.divider()
     st.markdown("### ⚠️ Manual Entry Required")
@@ -249,7 +249,7 @@ if st.session_state.failed_images:
             st.success(f"Added {len(manual_plates)} plates")
         st.session_state.failed_images = []
         st.rerun()
- 
+
 if st.session_state.all_groups:
     st.divider()
     st.header("Results")
@@ -292,4 +292,3 @@ if st.session_state.all_groups:
         if st.button("Clear All", use_container_width=True):
             st.session_state.all_groups = []
             st.rerun()
- 

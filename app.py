@@ -45,10 +45,10 @@ def compress_image(image_bytes: bytes) -> bytes:
             rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
             img = rgb_img
         
-        img.thumbnail((1920, 1920), Image.LANCZOS)
+        img.thumbnail((1500, 1500), Image.LANCZOS)
         
         output = io.BytesIO()
-        img.save(output, format='JPEG', quality=88, optimize=True)
+        img.save(output, format='JPEG', quality=80, optimize=True)
         output.seek(0)
         return output.getvalue()
     except Exception as e:
@@ -85,7 +85,7 @@ def detect_plates_in_image(image_bytes: bytes) -> List[str]:
                 text = detection['DetectedText']
                 confidence = detection['Confidence']
                 
-                if confidence > 50:
+                if confidence > 40:
                     cleaned_text = clean_license_plate_text(text)
                     if cleaned_text and cleaned_text not in license_plates:
                         license_plates.append(cleaned_text)

@@ -88,6 +88,16 @@ def detect_plates_in_image(image_bytes: bytes) -> List[str]:
         st.error(f"AWS Error: {e}")
         return []
 
+def get_duplicates(plates: List[str]) -> List[str]:
+    """Return list of plates that appear more than once."""
+    seen = set()
+    duplicates = []
+    for plate in plates:
+        if plate in seen and plate not in duplicates:
+            duplicates.append(plate)
+        seen.add(plate)
+    return duplicates
+
 def create_excel_file(all_groups: list) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -181,8 +191,11 @@ if submitted and uploaded_files and group_header:
             except Exception as e:
                 error_images.append(uploaded_file.name)
         
+        # Plates that appeared more than once in this batch
+        batch_duplicate_plates = get_duplicates(all_plates)
+        # Unique plates in this batch
         unique_plates = list(dict.fromkeys(all_plates))
-        
+
         existing_group = None
         for group in st.session_state.all_groups:
             if group['name'].lower() == group_header.lower():
@@ -190,32 +203,36 @@ if submitted and uploaded_files and group_header:
                 break
         
         if existing_group:
+            # Find plates in this batch that already exist in the group
+            existing_plate_set = set(existing_group['plates'])
+            cross_batch_dupes = [p for p in unique_plates if p in existing_plate_set]
+
+            # Merge plates
             combined_plates = existing_group['plates'] + unique_plates
             new_unique_plates = list(dict.fromkeys(combined_plates))
-            duplicates_found = len(combined_plates) - len(new_unique_plates)
             plates_added = len(new_unique_plates) - len(existing_group['plates'])
+
+            # All duplicates = within-batch dupes + cross-batch dupes
+            all_dupes = list(dict.fromkeys(
+                existing_group.get('duplicate_plates', []) +
+                batch_duplicate_plates +
+                cross_batch_dupes
+            ))
+
             existing_group['plates'] = new_unique_plates
             existing_group['total_uploaded'] += len(uploaded_files)
             existing_group['no_plate_count'] += len(no_plate_images)
-            existing_group['duplicate_count'] += duplicates_found
-            new_dupes = [p for p in unique_plates if p in set(existing_group['plates'])]
-            existing_group.setdefault('duplicate_plates', [])
-            existing_group['duplicate_plates'] = list(dict.fromkeys(existing_group['duplicate_plates'] + new_dupes))
+            existing_group['duplicate_plates'] = all_dupes
+            existing_group['duplicate_count'] = len(all_dupes)
             st.success(f"Appended {plates_added} new plates")
         else:
-            seen = set()
-            duplicate_plates = []
-            for p in all_plates:
-                if p in seen and p not in duplicate_plates:
-                    duplicate_plates.append(p)
-                seen.add(p)
             st.session_state.all_groups.append({
                 'name': group_header,
                 'plates': unique_plates,
                 'total_uploaded': len(uploaded_files),
                 'no_plate_count': len(no_plate_images),
-                'duplicate_count': len(duplicate_plates),
-                'duplicate_plates': duplicate_plates
+                'duplicate_count': len(batch_duplicate_plates),
+                'duplicate_plates': batch_duplicate_plates
             })
             st.success(f"Added {len(unique_plates)} new plates")
         

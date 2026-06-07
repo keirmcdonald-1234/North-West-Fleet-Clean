@@ -9,9 +9,23 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
 from botocore.exceptions import NoCredentialsError, ClientError
 
-st.set_page_config(page_title="Number Plate Recognition", page_icon="🚗", layout="wide")
+st.set_page_config(
+    page_title="Number Plate Recognition", 
+    page_icon="🚗", 
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    theme={
+        "primaryColor": "#FF8C00",
+        "backgroundColor": "#000000",
+        "secondaryBackgroundColor": "#1a1a1a",
+        "textColor": "#FFFFFF"
+    }
+)
 
-st.title("🚗 Number Plate Recognition App")
+try:
+    st.image("nw_fleet_clean_header.png", use_column_width=True)
+except:
+    st.title("🚗 Number Plate Recognition App")
 
 if 'all_groups' not in st.session_state:
     st.session_state.all_groups = []
@@ -156,7 +170,7 @@ with st.form("upload_form"):
         if total_size_mb >= 990:
             st.error("Maximum upload size reached!")
     
-    submitted = st.form_submit_button("✅ Process", use_container_width=True)
+    submitted = st.form_submit_button("Process ✅", use_container_width=True)
 
 if submitted and uploaded_files and group_header:
     with st.spinner("Processing..."):
@@ -165,11 +179,7 @@ if submitted and uploaded_files and group_header:
         error_images = []
         failed_images_data = []
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
         for idx, uploaded_file in enumerate(uploaded_files):
-            status_text.text(f"Image {idx + 1} of {len(uploaded_files)}")
             try:
                 image_bytes = uploaded_file.read()
                 compressed_bytes = compress_image(image_bytes)
@@ -186,12 +196,8 @@ if submitted and uploaded_files and group_header:
                     })
             except Exception as e:
                 error_images.append(uploaded_file.name)
-            
-            progress_bar.progress((idx + 1) / len(uploaded_files))
         
         unique_plates = list(dict.fromkeys(all_plates))
-        progress_bar.empty()
-        status_text.empty()
         
         existing_group = None
         for group in st.session_state.all_groups:
@@ -227,7 +233,6 @@ if submitted and uploaded_files and group_header:
             st.error(f"Error in {len(error_images)} images")
         
         st.session_state.clear_uploader = not st.session_state.clear_uploader
-        st.rerun()
 
 elif submitted and not group_header:
     st.warning("Enter site name")

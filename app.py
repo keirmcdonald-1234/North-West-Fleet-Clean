@@ -195,11 +195,12 @@ if submitted and uploaded_files and group_header:
             combined_plates = existing_group['plates'] + unique_plates
             new_unique_plates = list(dict.fromkeys(combined_plates))
             duplicates_found = len(combined_plates) - len(new_unique_plates)
+            plates_added = len(new_unique_plates) - len(existing_group['plates'])
             existing_group['plates'] = new_unique_plates
             existing_group['total_uploaded'] += len(uploaded_files)
             existing_group['no_plate_count'] += len(no_plate_images)
             existing_group['duplicate_count'] += duplicates_found
-            st.success(f"Appended {len(unique_plates)} plates")
+            st.success(f"Appended {plates_added} new plates")
         else:
             duplicates_in_batch = len(all_plates) - len(unique_plates)
             st.session_state.all_groups.append({
@@ -209,7 +210,7 @@ if submitted and uploaded_files and group_header:
                 'no_plate_count': len(no_plate_images),
                 'duplicate_count': duplicates_in_batch
             })
-            st.success(f"Added {len(unique_plates)} plates")
+            st.success(f"Added {len(unique_plates)} new plates")
         
         if no_plate_images:
             st.warning(f"No plates in {len(no_plate_images)} images")

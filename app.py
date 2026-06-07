@@ -1,4 +1,3 @@
-
 import streamlit as st
 import boto3
 from PIL import Image
@@ -187,6 +186,8 @@ if uploaded_files and group_header:
         with st.spinner("Processing images with AWS Rekognition..."):
             all_plates = []
             processed_count = 0
+            no_plate_images = []
+            error_images = []
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -198,11 +199,15 @@ if uploaded_files and group_header:
                     image_bytes = uploaded_file.read()
                     compressed_bytes = compress_image(image_bytes)
                     plates = detect_plates_in_image(compressed_bytes)
-                    all_plates.extend(plates)
-                    processed_count += 1
+                    
+                    if plates:
+                        all_plates.extend(plates)
+                        processed_count += 1
+                    else:
+                        no_plate_images.append(uploaded_file.name)
                     
                 except Exception as e:
-                    st.warning(f"Error processing {uploaded_file.name}: {str(e)}")
+                    error_images.append(uploaded_file.name)
                 
                 progress = (idx + 1) / len(uploaded_files)
                 progress_bar.progress(progress)
@@ -230,6 +235,18 @@ if uploaded_files and group_header:
                     'image_count': processed_count
                 })
                 st.success(f"Added '{group_header}' with {len(unique_plates)} license plate(s) from {processed_count} images")
+            
+            # Show warnings for images with no plates detected
+            if no_plate_images:
+                st.warning(f"⚠️ No number plates detected in {len(no_plate_images)} image(s):")
+                for img in no_plate_images:
+                    st.write(f"  • {img}")
+            
+            # Show errors for images that failed to process
+            if error_images:
+                st.error(f"❌ Error processing {len(error_images)} image(s):")
+                for img in error_images:
+                    st.write(f"  • {img}")
             
             st.session_state.clear_uploader = not st.session_state.clear_uploader
             st.rerun()

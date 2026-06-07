@@ -234,14 +234,14 @@ elif submitted and not group_header:
 
 if st.session_state.failed_images:
     st.divider()
-    st.header("Manual Entry")
+    st.markdown("### ⚠️ Manual Entry Required")
     
     for idx, failed_img in enumerate(st.session_state.failed_images):
         col1, col2 = st.columns([1, 2])
         with col1:
             st.image(failed_img['image'], use_column_width=True)
         with col2:
-            st.write(f"**{failed_img['name']}**")
+            st.write("")
             plate = st.text_input("Number plate:", key=f"manual_plate_{idx}")
             if plate:
                 st.session_state.failed_images[idx]['plate'] = plate.upper()
@@ -258,16 +258,15 @@ if st.session_state.failed_images:
 
 if st.session_state.all_groups:
     st.divider()
-    st.header("Sites")
+    st.header("Results")
     
     for idx, group in enumerate(st.session_state.all_groups):
         col1, col2 = st.columns([3, 1])
         with col1:
             st.subheader(f"📌 {group['name']}")
-            st.write(f"**Total images uploaded:** {group.get('total_uploaded', 0)}")
+            st.write(f"**Total Images Uploaded:** {group.get('total_uploaded', 0)}")
             st.write(f"**Unique Number Plates Identified:** {len(group['plates'])}")
             st.write(f"**Duplicates:** {group.get('duplicate_count', 0)}")
-            st.write(f"**No number plate detected:** {group.get('no_plate_count', 0)}")
         with col2:
             st.write("")
             if st.button("Remove", key=f"remove_{idx}", use_container_width=True):
